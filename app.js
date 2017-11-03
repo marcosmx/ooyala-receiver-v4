@@ -22,6 +22,7 @@
  var debug = true;
  var initialTimeout = null;
  var player = null;
+ var playerId = null;
  var senders = [];
  var currentEmbedCode = null;
  var currentPlayheadTimeInfo = {};
@@ -204,7 +205,6 @@ function onError(errorObj) {
 function onLoad(event) {
   printDebugMessage("onLoad", event);
   stopped = false;
-  ended = false;
   stopEvent = null;
   var playerData = event.data.media.customData;
   handleLoadingScreenInfo(playerData);
@@ -213,11 +213,11 @@ function onLoad(event) {
   if (!hasBeenInitialized) {
     screenController.showScreen(splashScreen);
     initPlayer(playerData);
+    $("#tmp_video").remove();
   } else {
     reinitPlayer(playerData);
   }
   window.mediaManager.sendStatus(event.senderId, event.data.requestId, true);
-  $("#tmp_video").remove();
 }
 
 /**
@@ -344,6 +344,8 @@ function printDebugMessage(command, event, ignorePattern) {
    if (data && data.ec) {
      clearTimeout(initialTimeout);
    }
+
+   ended = false;
    // mark as initialized
    hasBeenInitialized = true;
    currentEmbedCode = data.ec;
@@ -412,19 +414,6 @@ function printDebugMessage(command, event, ignorePattern) {
              }
              screenController.showScreen(loadingScreen);
              break;
-           case OO.EVENTS.PLAYBACK_READY:
-             /* player.mb.publish(OO.EVENTS.CAN_PLAY)   
-             if (autoPlay) {
-               // Controlled extention of displaying loading screen, currently set to 3 seconds.  
-               // ATTN: Receiver HAS TO publish CAN_PLAY in case of autoPlay
-               //player.mb.publish(OO.EVENTS.CAN_PLAY);
-               setTimeout(function() {            
-                 player.mb.publish(OO.EVENTS.INITIAL_PLAY);
-               }, 3000);
-             } else {
-               player.mb.publish(OO.EVENTS.CAN_PLAY);
-             } */
-             break;
            case OO.EVENTS.STREAM_PLAYING:
              // Show the player screen
              screenController.showScreen(playerScreen, "setClosedCaptionsLanguage(ccLanguage)");
@@ -444,17 +433,18 @@ function printDebugMessage(command, event, ignorePattern) {
              controls.setValuePlayhead(currentPlayheadTimeInfo);
              sendToAllSenders(JSON.stringify(arguments));
              break;
-           case OO.EVENTS.VC_VIDEO_ELEMENT_CREATED:
+           case OO.EVENTS.PLAYBACK_READY:
              // Assign the root element and controls when player is created
+ 
              rootElement = document.querySelector(".innerWrapper");
-             window.mediaElement = document.getElementsByClassName('video')[0];
+             window.mediaElement = document.querySelectorAll(`#${playerId}`)[0];
              printDebugMessage("new mediaElement", window.mediaElement);
              window.mediaManager.setMediaElement(window.mediaElement);
-             
-             if (controls === null){
-                controls = new _Controls(rootElement);   
+ 
+             if (controls === null) {
+               controls = new _Controls(rootElement);
              }
-                       
+ 
              controls.showControls();
              // Handling timeouts
              handleReceiverTimeouts(player);
@@ -511,6 +501,7 @@ function printDebugMessage(command, event, ignorePattern) {
                  ccResourceMap[languages[i]] = ccData.captions[languages[i]].url;
                }
              }
+             break;
            case OO.EVENTS.SEEK:
              // Just show seek bar, duration and played labels
              controls.showScrubber();
@@ -532,6 +523,9 @@ function printDebugMessage(command, event, ignorePattern) {
 
              displayErrorTitleDescription(error);
              sendToAllSenders(JSON.stringify(arguments));
+             break;
+           case OO.EVENTS.VC_VIDEO_ELEMENT_CREATED:
+             playerId = "bitmovinplayer-video-" + arguments[1].domId;
              break;
            }
 
@@ -555,6 +549,15 @@ function printDebugMessage(command, event, ignorePattern) {
      debug = data.debug;
 
      currentEmbedCode = data.ec;
+    
+     //if the embed code it is the same, just trigger the replay event
+    if (player && player.getEmbedCode() === currentEmbedCode){
+      //window.mediaManager.onPlayAgain(event);
+      player.mb.publish(OO.EVENTS.REPLAY);
+      return;
+    }
+
+     ended = false;
      isLiveStream = false;
      duration = 0;
      var playerParams = {};
